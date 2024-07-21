@@ -2,9 +2,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:transfer_archive/entities/devices.dart';
 import 'package:transfer_archive/entities/folder.dart';
+import 'package:transfer_archive/widgets/drop_down_button_form_utils.dart';
 import 'package:transfer_archive/utils/emulator.dart';
-
-enum Action { download, database, shared, pull }
+import 'package:transfer_archive/utils/radio_button.dart';
 
 // ignore: must_be_immutable
 class EmulatorExecuted extends StatefulWidget {
@@ -23,26 +23,10 @@ class _EmulatorExecutedState extends State<EmulatorExecuted> {
   String? folder;
   String? database;
   String? shared;
-  Action _action = Action.download;
+  ActionButtom _action = ActionButtom.download;
   String? selectedDirectory;
+  FilePickerResult? selectedDirectoryFile;
   String? messageSuccess;
-
-  Widget radioButton(String title, Action type) {
-    return ListTile(
-      title: Text(title),
-      dense: true,
-      contentPadding: const EdgeInsets.only(left: 1, bottom: 0),
-      leading: Radio<Action>(
-        value: type,
-        groupValue: _action,
-        onChanged: (Action? value) {
-          setState(() {
-            _action = value!;
-          });
-        },
-      ),
-    );
-  }
 
   Future<List<Folder>> listFolder() async {
     if (emulador == null) return [];
@@ -57,6 +41,23 @@ class _EmulatorExecutedState extends State<EmulatorExecuted> {
   Future<List<Folder>> listShared() async {
     if (emulador == null || folder == null) return [];
     return await Emulator().listShared(widget.devices[emulador!].name, folder!);
+  }
+
+  void changeButton(ActionButtom value) {
+    _action = value;
+
+    if (value == ActionButtom.database || value == ActionButtom.download || value == ActionButtom.shared) {
+      selectedDirectory = null;
+    }
+    if (value == ActionButtom.pull) selectedDirectoryFile = null;
+    setState(() {});
+  }
+
+  Widget dropdownMenuItemText(String value) {
+    return Text(
+      value,
+      style: const TextStyle(fontSize: 14),
+    );
   }
 
   @override
@@ -74,47 +75,59 @@ class _EmulatorExecutedState extends State<EmulatorExecuted> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(left: 10),
-                    child: DropdownButtonFormField<int>(
-                      hint: const Text("Emuladores", style: TextStyle(fontSize: 14, color: Colors.grey)),
-                      value: dropdownValue,
-                      icon: const Icon(Icons.expand_more),
-                      elevation: 16,
-                      isExpanded: true,
-                      isDense: true,
-                      style: const TextStyle(color: Colors.black54),
-                      onChanged: (int? value) {
+                    child: DropdownButtonFormFieldUtils(
+                      list: widget.devices,
+                      onChanged: (value) {
                         emulador = value;
                         setState(() {});
                       },
-                      items: widget.devices.map<DropdownMenuItem<int>>((value) {
+                      title: 'Emuladores',
+                      dropdownMenuItem: (value) {
                         return DropdownMenuItem<int>(
-                          value: value.id,
-                          child: Text(
-                            value.name,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        );
-                      }).toList(),
+                            value: value.id, child: dropdownMenuItemText(value.name));
+                      },
                     ),
                   ),
-                  radioButton('Transferir para download', Action.download),
-                  radioButton('Transferir para database', Action.database),
-                  radioButton('Transferir para shared preference', Action.shared),
-                  radioButton('Transferir para local', Action.pull),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 10, top: 15, bottom: 5),
+                    child: DefaultTextStyle(
+                      style: TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w400),
+                      child: Text('Transferir para'),
+                    ),
+                  ),
+                  ...RadioButonUtils(
+                    radios: [
+                      Button('Download', ActionButtom.download),
+                      Button('Database', ActionButtom.database),
+                      Button('Shared', ActionButtom.shared),
+                      Button('Pasta', ActionButtom.pull)
+                    ],
+                    group: _action,
+                    click: (value) => changeButton(value),
+                  ).build(context),
                   Visibility(
                     visible: (emulador != null),
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: ElevatedButton(
                         onPressed: () async {
-                          String? directory = await FilePicker.platform.getDirectoryPath();
+                          selectedDirectory = null;
+                          selectedDirectoryFile = null;
+                          if (_action == ActionButtom.pull) {
+                            String? directory = await FilePicker.platform.getDirectoryPath();
 
-                          if (directory != null) selectedDirectory = directory;
-                          setState(() {});
+                            if (directory != null) selectedDirectory = directory;
+                            setState(() {});
+                          } else {
+                            FilePickerResult? directoryFile = await FilePicker.platform.pickFiles();
+
+                            if (directoryFile != null) selectedDirectoryFile = directoryFile;
+                            setState(() {});
+                          }
                         },
                         style: TextButton.styleFrom(
                             foregroundColor: Colors.black54, backgroundColor: Colors.white),
-                        child: const Text("Selecionar pasta"),
+                        child: Text(_action == ActionButtom.pull ? "Selecionar Pasta" : "Selecionar Arquivo"),
                       ),
                     ),
                   ),
@@ -132,27 +145,17 @@ class _EmulatorExecutedState extends State<EmulatorExecuted> {
                         future: listFolder(),
                         builder: (BuildContext context, AsyncSnapshot<List<Folder>> snapshot) {
                           if (snapshot.hasData) {
-                            return DropdownButtonFormField<int>(
-                              hint: const Text("Projeto", style: TextStyle(fontSize: 14, color: Colors.grey)),
-                              value: dropdownValueDb,
-                              icon: const Icon(Icons.expand_more),
-                              elevation: 16,
-                              isExpanded: true,
-                              isDense: true,
-                              style: const TextStyle(color: Colors.black54),
-                              onChanged: (int? value) {
-                                folder = snapshot.data![value!].name;
+                            return DropdownButtonFormFieldUtils(
+                              list: snapshot.data!,
+                              onChanged: (value) {
+                                folder = snapshot.data![value].name;
                                 setState(() {});
                               },
-                              items: snapshot.data!.map<DropdownMenuItem<int>>((value) {
+                              title: 'Projeto',
+                              dropdownMenuItem: (value) {
                                 return DropdownMenuItem<int>(
-                                  value: value.id,
-                                  child: Text(
-                                    value.name,
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                );
-                              }).toList(),
+                                    value: value.id, child: dropdownMenuItemText(value.name));
+                              },
                             );
                           }
                           return const Center(
@@ -166,28 +169,17 @@ class _EmulatorExecutedState extends State<EmulatorExecuted> {
                         future: listDatabase(),
                         builder: (BuildContext context, AsyncSnapshot<List<Folder>> snapshot) {
                           if (snapshot.hasData) {
-                            return DropdownButtonFormField<int>(
-                              hint:
-                                  const Text("Database", style: TextStyle(fontSize: 14, color: Colors.grey)),
-                              value: dropdownValueDb,
-                              icon: const Icon(Icons.expand_more),
-                              elevation: 16,
-                              isExpanded: true,
-                              isDense: true,
-                              style: const TextStyle(color: Colors.black54),
-                              onChanged: (int? value) {
-                                database = snapshot.data![value!].name;
+                            return DropdownButtonFormFieldUtils(
+                              list: snapshot.data!,
+                              onChanged: (value) {
+                                database = snapshot.data![value].name;
                                 setState(() {});
                               },
-                              items: snapshot.data!.map<DropdownMenuItem<int>>((value) {
+                              title: 'Database',
+                              dropdownMenuItem: (value) {
                                 return DropdownMenuItem<int>(
-                                  value: value.id,
-                                  child: Text(
-                                    value.name,
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                );
-                              }).toList(),
+                                    value: value.id, child: dropdownMenuItemText(value.name));
+                              },
                             );
                           }
                           return const Center(
@@ -201,27 +193,17 @@ class _EmulatorExecutedState extends State<EmulatorExecuted> {
                         future: listShared(),
                         builder: (BuildContext context, AsyncSnapshot<List<Folder>> snapshot) {
                           if (snapshot.hasData) {
-                            return DropdownButtonFormField<int>(
-                              hint: const Text("Shared", style: TextStyle(fontSize: 14, color: Colors.grey)),
-                              value: dropdownValueDb,
-                              icon: const Icon(Icons.expand_more),
-                              elevation: 16,
-                              isExpanded: true,
-                              isDense: true,
-                              style: const TextStyle(color: Colors.black54),
-                              onChanged: (int? value) {
-                                shared = snapshot.data![value!].name;
+                            return DropdownButtonFormFieldUtils(
+                              list: snapshot.data!,
+                              onChanged: (value) {
+                                shared = snapshot.data![value].name;
                                 setState(() {});
                               },
-                              items: snapshot.data!.map<DropdownMenuItem<int>>((value) {
+                              title: 'Shared',
+                              dropdownMenuItem: (value) {
                                 return DropdownMenuItem<int>(
-                                  value: value.id,
-                                  child: Text(
-                                    value.name,
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                );
-                              }).toList(),
+                                    value: value.id, child: dropdownMenuItemText(value.name));
+                              },
                             );
                           }
                           return const Center(
@@ -241,12 +223,14 @@ class _EmulatorExecutedState extends State<EmulatorExecuted> {
             Expanded(
               flex: 2,
               child: Visibility(
-                visible: (selectedDirectory != null),
+                visible: (selectedDirectory != null || selectedDirectoryFile != null),
                 child: Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: DefaultTextStyle(
                     style: const TextStyle(fontSize: 14, color: Colors.grey, fontWeight: FontWeight.w500),
-                    child: Text('Salvar em: ${selectedDirectory ?? ''}'),
+                    child: Text(selectedDirectory != null
+                        ? 'Salvar em: ${selectedDirectory ?? ''}'
+                        : 'Arquivo: ${selectedDirectoryFile?.names.first ?? ''}'),
                   ),
                 ),
               ),
